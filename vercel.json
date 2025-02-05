@@ -5,5 +5,10 @@
       "src": "bot.py",
       "use": "@vercel/python"
     }
-  ]
+  ],
+  "env": {
+    "BOT_TOKEN": "7796744703:AAHfhMz8FMEaDPGr011xlIGco2ob9Vb93ws",
+    "API_ID": "21339876",
+    "API_HASH": "5dcddbaDec86b0c9a71785401d9bb605"
+  }
 }
