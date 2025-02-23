@@ -1,6 +1,12 @@
 from telethon import TelegramClient, events
 import asyncio
 import os
+import subprocess
+import requests
+from dotenv import load_dotenv
+
+# تحميل المتغيرات من ملف .env
+load_dotenv()
 
 # استبدل هذه القيم بـ API ID و API Hash الخاص بك
 api_id = 21339876
@@ -9,20 +15,43 @@ api_hash = '5dcddba0ec86b0c9a71785401d9bb605'
 # إنشاء العميل باستخدام حساب مستخدم
 client = TelegramClient('user_session', api_id, api_hash)
 
-# متغير للتحقق من حالة الإلغاء
-cancel_flag = False
-
+# قراءة الـ Token من المتغيرات
+github_token = os.getenv("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")
+owner = "Ambtion319"
+repo = "abcdh"
 # دالة لتتبع تقدم التحميل
 async def track_progress(current, total, event, progress_message, link):
-    if not cancel_flag:
-        percentage = (current / total) * 100
-        await client.edit_message(progress_message, f"جارٍ تحميل الملف من الرابط: {link}\nالنسبة: {percentage:.2f}%")
+    percentage = (current / total) * 100
+    await client.edit_message(progress_message, f"جارٍ تحميل الملف من الرابط: {link}\nالنسبة: {percentage:.2f}%")
+
+# دالة لتنفيذ الطلب إلى GitHub Actions
+async def trigger_github_actions():
+    url = f"https://api.github.com/repos/{owner}/{repo}/dispatches"
+    headers = {
+        "Authorization": f"token {github_token}",
+        "Accept": "application/vnd.github.everest-preview+json"
+    }
+    data = {
+        "event_type": "run-bot"
+    }
+    response = requests.post(url, json=data, headers=headers)
+    return response.status_code == 204
 
 # حدث عند استقبال رسالة
 @client.on(events.NewMessage)
 async def handle_message(event):
-    global cancel_flag #تحديث المتغير العالمى
-    # التحقق من أن الرسالة تحتوي على روابط
+    global cancel_flag
+
+    # إذا كانت الرسالة "start"
+    if event.raw_text == 'start':
+        success = await trigger_github_actions()
+        if success:
+            await event.reply("تم تشغيل الكود بنجاح!")
+        else:
+            await event.reply("حدث خطأ أثناء تشغيل الكود.")
+        return
+
+    # باقي الكود الحالي...
     if event.raw_text == 'cancel':
         cancel_flag = True
         await event.reply("تم إلغاء العملية.")
@@ -68,8 +97,18 @@ async def handle_message(event):
                                     progress_callback=lambda current, total: track_progress(current, total, event, progress_message, link)
                                 )
                                 if not cancel_flag:
-                                    file_name = os.path.basename(file) if file else "ملف" # استخراج اسم الملف
-                                    await client.send_file(event.chat_id, file, caption=file_name) # إضافة اسم الملف
+                                    # إضافة إعادة ترميز الفيديو باستخدام ffmpeg
+                                    try:
+                                        new_file = f"{file}.mp4"
+                                        subprocess.run(['ffmpeg', '-i', file, '-c', 'copy', new_file], check=True)
+                                        file_name = os.path.basename(new_file)
+                                        await client.send_file(event.chat_id, new_file, caption=file_name)
+                                        os.remove(new_file)
+                                    except Exception as ffmpeg_error:
+                                        print(f"ffmpeg error: {ffmpeg_error}")
+                                        file_name = os.path.basename(file)
+                                        await client.send_file(event.chat_id, file, caption=file_name)
+
                                     success_count += 1
                                     os.remove(file)  # حذف الملف المؤقت
                             else:
@@ -85,8 +124,17 @@ async def handle_message(event):
                                 progress_callback=lambda current, total: track_progress(current, total, event, progress_message, link)
                             )
                             if not cancel_flag:
-                                file_name = os.path.basename(file) if file else "ملف" # استخراج اسم الملف
-                                await client.send_file(event.chat_id, file, caption=file_name) # إضافة اسم الملف
+                                # إضافة إعادة ترميز الفيديو باستخدام ffmpeg
+                                try:
+                                    new_file = f"{file}.mp4"
+                                    subprocess.run(['ffmpeg', '-i', file, '-c', 'copy', new_file], check=True)
+                                    file_name = os.path.basename(new_file)
+                                    await client.send_file(event.chat_id, new_file, caption=file_name)
+                                    os.remove(new_file)
+                                except Exception as ffmpeg_error:
+                                    print(f"ffmpeg error: {ffmpeg_error}")
+                                    file_name = os.path.basename(file)
+                                    await client.send_file(event.chat_id, file, caption=file_name)
                                 success_count += 1
                                 os.remove(file)  # حذف الملف المؤقت
                         else:
