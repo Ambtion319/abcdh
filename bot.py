@@ -9,15 +9,24 @@ api_hash = '5dcddba0ec86b0c9a71785401d9bb605'
 # إنشاء العميل باستخدام حساب مستخدم
 client = TelegramClient('user_session', api_id, api_hash)
 
+# متغير للتحقق من حالة الإلغاء
+cancel_flag = False
+
 # دالة لتتبع تقدم التحميل
 async def track_progress(current, total, event, progress_message, link):
-    percentage = (current / total) * 100
-    await client.edit_message(progress_message, f"جارٍ تحميل الملف من الرابط: {link}\nالنسبة: {percentage:.2f}%")
+    if not cancel_flag:
+        percentage = (current / total) * 100
+        await client.edit_message(progress_message, f"جارٍ تحميل الملف من الرابط: {link}\nالنسبة: {percentage:.2f}%")
 
 # حدث عند استقبال رسالة
 @client.on(events.NewMessage)
 async def handle_message(event):
+    global cancel_flag #تحديث المتغير العالمى
     # التحقق من أن الرسالة تحتوي على روابط
+    if event.raw_text == 'cancel':
+        cancel_flag = True
+        await event.reply("تم إلغاء العملية.")
+        return
     if 'https://t.me/c/' in event.raw_text:
         try:
             # إرسال رسالة تفيد بأنه يتم تحميل الملفات
@@ -30,6 +39,8 @@ async def handle_message(event):
 
             # معالجة كل رابط على حدة
             for link in links:
+                if cancel_flag: # تم اضافة الشرط
+                    break
                 try:
                     # استخراج معرف القناة ورقم الرسالة من الرابط
                     parts = link.split('/')
@@ -50,15 +61,19 @@ async def handle_message(event):
 
                         # تحميل الملفات من كل رسالة
                         for message in messages:
+                            if cancel_flag: # تم اضافة الشرط
+                                break
                             if message.media:
                                 file = await message.download_media(
                                     progress_callback=lambda current, total: track_progress(current, total, event, progress_message, link)
                                 )
-                                await client.send_file(event.chat_id, file, caption=f"تم تحميل الملف من الرابط: {link}")
-                                success_count += 1
-                                os.remove(file)  # حذف الملف المؤقت
+                                if not cancel_flag:
+                                    file_name = os.path.basename(file) if file else "ملف" # استخراج اسم الملف
+                                    await client.send_file(event.chat_id, file, caption=file_name) # إضافة اسم الملف
+                                    success_count += 1
+                                    os.remove(file)  # حذف الملف المؤقت
                             else:
-                                await event.reply(f"الرسالة من الرابط {link} لا تحتوي على ملف.")
+                                await client.send_message(event.chat_id, message.text) #تم اضافة ارسال الرسالة
                     else:
                         # إذا كان الرابط يحتوي على رسالة واحدة فقط
                         message_id = int(message_ids[0])
@@ -69,17 +84,20 @@ async def handle_message(event):
                             file = await message.download_media(
                                 progress_callback=lambda current, total: track_progress(current, total, event, progress_message, link)
                             )
-                            await client.send_file(event.chat_id, file, caption=f"تم تحميل الملف من الرابط: {link}")
-                            success_count += 1
-                            os.remove(file)  # حذف الملف المؤقت
+                            if not cancel_flag:
+                                file_name = os.path.basename(file) if file else "ملف" # استخراج اسم الملف
+                                await client.send_file(event.chat_id, file, caption=file_name) # إضافة اسم الملف
+                                success_count += 1
+                                os.remove(file)  # حذف الملف المؤقت
                         else:
-                            await event.reply(f"الرسالة من الرابط {link} لا تحتوي على ملف.")
+                            await client.send_message(event.chat_id, message.text) #تم اضافة ارسال الرسالة
                 except Exception as e:
                     await event.reply(f"حدث خطأ أثناء جلب الرسالة: {e}")
 
             # إرسال ملخص بعد الانتهاء
-            await client.edit_message(progress_message, f"تم تحميل {success_count} ملف(ات) بنجاح من أصل {len(links)}.")
-
+            if not cancel_flag:
+                await client.edit_message(progress_message, f"تم تحميل {success_count} ملف(ات) بنجاح من أصل {len(links)}.")
+            cancel_flag=False #اعادة المتغير الى الوضع الافتراضى
         except Exception as e:
             await event.reply(f"حدث خطأ: {e}")
 
